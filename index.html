@@ -47,7 +47,7 @@ table.tbl td{padding:8px 9px;border-bottom:1px solid var(--line)}table.tbl input
 .md-h{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap;position:sticky;top:0;background:#fff;border-radius:16px 16px 0 0;z-index:2}.md-h b{flex:1}
 .md-b{padding:14px;background:#f3f6f4;border-radius:0 0 16px 16px}
 .prog{height:10px;background:#e3eae6;border-radius:99px;overflow:hidden;margin:12px 0}.prog i{display:block;height:100%;width:0;background:var(--pri)}
-.paper{background:#fff;padding:18px;border-radius:6px}
+.paper{background:#fff;padding:18px;border-radius:6px;border:1px solid var(--line);box-shadow:0 2px 10px rgba(16,40,30,.08)}
 table.g{width:100%;border-collapse:collapse;margin:8px 0 12px;font-size:13.5px}
 table.g th,table.g td{border:1px solid #a9b8b0;padding:6px 7px;text-align:right;vertical-align:top}table.g th{background:#e6f2ec}
 table.g td[contenteditable]{background:#fffef5}.notes{border:1px dashed #a9b8b0;min-height:56px;padding:8px;border-radius:6px}
@@ -253,6 +253,9 @@ const docInner=(title,body)=>`<style>${DOC_CSS}</style>${headerHtml()}<h2 class=
 function printHtml(title,body,landscape){const f=document.createElement('iframe');f.style.cssText='position:fixed;width:0;height:0;border:0;left:-9999px';document.body.appendChild(f);
   f.onload=()=>setTimeout(()=>{try{f.contentWindow.focus();f.contentWindow.print();}catch(e){toast('تعذّرت الطباعة','bad');}setTimeout(()=>f.remove(),60000);},400);
   f.srcdoc=`<!doctype html><html dir="rtl"><head><meta charset="utf-8"><style>@page{size:A4 ${landscape?'landscape':'portrait'};margin:11mm}body{margin:0}</style></head><body><div class="pdoc">${docInner(title,body)}</div></body></html>`;}
+/* الورقة كاملة على الصفحة (معاينة تلقائية بلا أزرار) */
+function paperHtml(title,body,landscape){
+  return `<h3 style="margin-top:14px">📄 معاينة التقرير</h3><div class="paper" style="overflow-x:auto"><div class="pdoc" style="min-width:${landscape?900:640}px">${docInner(title,body)}</div></div>`;}
 async function htmlToPdf(inner,landscape){
   const W=landscape?1123:794,sc=1.5;window.scrollTo(0,0);
   const d=document.createElement('div');d.className='pdoc';d.style.cssText=`position:absolute;left:0;top:0;z-index:-1;width:${W}px;padding:28px 32px;background:#fff;box-sizing:border-box`;
@@ -336,7 +339,10 @@ function renderStu(r){const st=r.stats;
   ${kpiHtml(st,true)}<div id="sgr"></div>
   ${st.missing.length?`<div class="card pad" style="margin-bottom:12px"><h3>المهام المتبقية (${st.missing.length})</h3><div class="tags">${st.missing.map(x=>`<span class="tag red">${esc(x)}</span>`).join('')}</div></div>`:`<div class="card pad" style="margin-bottom:12px;color:var(--pri2);font-weight:700">✅ أنجز الطالب جميع المهام</div>`}
   <div class="card tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>عنوان التقرير</th><th>النوع</th><th>الدرجة %</th><th>ملاحظة</th><th></th></tr></thead><tbody>
-  ${r.files.map((f,i)=>`<tr><td>${i+1}</td><td><b>${esc(f.title)}</b></td><td>${esc(f.type)}</td><td><input class="sc" type="number" min="0" max="100" data-i="${i}" value="${esc(f.score)}"></td><td><input class="nt" data-i="${i}" value="${esc(f.manual?f.sn:'')}" placeholder="${esc(f.manual?'':f.sn)}"></td><td><button class="btn sm" data-v="${i}">عرض</button></td></tr>`).join('')}</tbody></table></div>`;
+  ${r.files.map((f,i)=>`<tr><td>${i+1}</td><td><b>${esc(f.title)}</b></td><td>${esc(f.type)}</td><td><input class="sc" type="number" min="0" max="100" data-i="${i}" value="${esc(f.score)}"></td><td><input class="nt" data-i="${i}" value="${esc(f.manual?f.sn:'')}" placeholder="${esc(f.manual?'':f.sn)}"></td><td><button class="btn sm" data-v="${i}">عرض</button></td></tr>`).join('')}</tbody></table></div>
+  <div id="paperBox"></div>`;
+  const paint=()=>{$('#paperBox').innerHTML=paperHtml('تقرير إنجاز طالب',stuDoc(r),false);};
+  paint();
   $('#aP').onclick=()=>printHtml('تقرير إنجاز طالب',stuDoc(r));
   $('#aS').onclick=e=>exportPdf(e.currentTarget,'تقرير','إنجاز طالب',stuDoc(r),false,r.stu);
   $('#aR').onclick=()=>openRecord(r.cls,r.stu,r.files);$('#aRem').onclick=()=>openPlan(r.cls,r.stu,'علاجية');$('#aEnr').onclick=()=>openPlan(r.cls,r.stu,'إثرائية');
@@ -344,7 +350,8 @@ function renderStu(r){const st=r.stats;
   $$('[data-v]').forEach(b=>b.onclick=async()=>{const f=r.files[+b.dataset.v],buf=await IDB.get('blobs',f.id),url=URL.createObjectURL(new Blob([buf],{type:'application/pdf'}));window.open(url,'_blank');});
   $$('.sc,.nt').forEach(inp=>inp.onchange=async()=>{const i=+inp.dataset.i,f=r.files[i],sc=$(`.sc[data-i="${i}"]`).value.trim(),nt=$(`.nt[data-i="${i}"]`).value.trim();
     if(sc!==''&&(isNaN(Number(sc))||Number(sc)<0||Number(sc)>100)){toast('الدرجة بين 0 و100','bad');return;}
-    f.score=sc===''?'':Number(sc);f.sn=nt||f.sn;f.manual=true;await IDB.put('meta',f);toast('✅ حُفظت','good');});}
+    f.score=sc===''?'':Number(sc);f.sn=nt||f.sn;f.manual=true;await IDB.put('meta',f);toast('✅ حُفظت','good');
+    const nr=stuReport(r.cls,r.stu);r.files=nr.files;r.stats=nr.stats;paint();});}
 
 function clsDoc(r){const s=r.summary;
   return `<table class="g"><tr><th>الصف</th><td>${esc(r.cls)}</td><th>عدد الطلاب</th><td>${s.students}</td><th>المهام</th><td>${s.tasks}</td></tr><tr><th>متوسط المتحقق</th><td><b>${s.avgPct}%</b></td><th>المتبقي</th><td><b>${s.remain}%</b></td><th>متوسط الدرجات</th><td>${avgTxt(s.avgScore)}</td></tr>
@@ -356,7 +363,9 @@ function tabCls(){$('#tab').innerHTML=`<div class="card filters">${pickers(false
    <div class="kpis"><div class="kpi"><small>الطلاب</small><b>${s.students}</b></div><div class="kpi"><small>متوسط المتحقق</small><b>${s.avgPct}%</b>${pctBar(s.avgPct)}</div><div class="kpi"><small>المتبقي</small><b>${s.remain}%</b></div><div class="kpi"><small>متوسط الدرجات</small><b>${avgTxt(s.avgScore)}</b></div>
    <div class="kpi"><small>التوزيع</small><div class="row"><span class="badge b-rem">علاجية ${s.rem}</span><span class="badge b-mid">متابعة ${s.mid}</span><span class="badge b-enr">إثرائية ${s.enr}</span></div></div></div>
    <div class="card tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>الطالب</th><th>الملفات</th><th>المنجز</th><th style="min-width:120px">المتحقق</th><th>المتوسط</th><th>التوصية</th><th></th></tr></thead><tbody>
-   ${r.students.map((x,i)=>`<tr><td>${i+1}</td><td><b>${esc(x.name)}</b></td><td>${x.files}</td><td>${x.done}/${x.total}</td><td><div class="row" style="flex-wrap:nowrap"><span>${x.pct}%</span>${pctBar(x.pct)}</div></td><td>${avgTxt(x.avg)}</td><td>${lvl(x.level)}</td><td><button class="btn sm" data-s="${esc(x.name)}">التقرير</button></td></tr>`).join('')}</tbody></table></div>`;
+   ${r.students.map((x,i)=>`<tr><td>${i+1}</td><td><b>${esc(x.name)}</b></td><td>${x.files}</td><td>${x.done}/${x.total}</td><td><div class="row" style="flex-wrap:nowrap"><span>${x.pct}%</span>${pctBar(x.pct)}</div></td><td>${avgTxt(x.avg)}</td><td>${lvl(x.level)}</td><td><button class="btn sm" data-s="${esc(x.name)}">التقرير</button></td></tr>`).join('')}</tbody></table></div>
+   <div id="paperBox"></div>`;
+   $('#paperBox').innerHTML=paperHtml('تقرير إنجاز صف: '+r.cls,clsDoc(r),false);
    $('#aP').onclick=()=>printHtml('تقرير إنجاز صف: '+r.cls,clsDoc(r));$('#aS').onclick=e=>exportPdf(e.currentTarget,'تقرير','صف',clsDoc(r),false,r.cls);
    $$('[data-s]').forEach(b=>b.onclick=()=>{S.sel={c:c,s:b.dataset.s};S.tab='stu';shell();});},false);}
 
@@ -366,8 +375,10 @@ function tabAll(){const r=allReport(),t=r.total;
   $('#tab').innerHTML=r.classes.length?`<div class="row" style="margin-bottom:12px"><button class="btn" id="aP">🖨️ طباعة</button><button class="btn" id="aS">💾 حفظ PDF</button></div>
    <div class="kpis"><div class="kpi"><small>الصفوف / الطلاب</small><b>${r.classes.length} / ${t.students}</b></div><div class="kpi"><small>المتحقق العام</small><b>${t.avgPct}%</b>${pctBar(t.avgPct)}</div><div class="kpi"><small>المتبقي</small><b>${t.remain}%</b></div><div class="kpi"><small>متوسط الدرجات</small><b>${avgTxt(t.avgScore)}</b></div></div>
    <div class="card pad" style="margin-bottom:12px"><h3>نسبة المتحقق حسب الصف</h3>${r.classes.map(c=>`<div class="crow"><span>${esc(c.cls)}</span>${pctBar(c.avgPct)}<b>${c.avgPct}%</b></div>`).join('')}</div>
-   <div class="card tbl-wrap"><table class="tbl"><thead><tr><th>الصف</th><th>الطلاب</th><th>الملفات</th><th>المتحقق</th><th>المتبقي</th><th>المتوسط</th><th>علاجية</th><th>متابعة</th><th>إثرائية</th></tr></thead><tbody>${r.classes.map(c=>`<tr><td><b>${esc(c.cls)}</b></td><td>${c.students}</td><td>${c.files}</td><td>${c.avgPct}%</td><td>${c.remain}%</td><td>${avgTxt(c.avgScore)}</td><td>${c.rem}</td><td>${c.mid}</td><td>${c.enr}</td></tr>`).join('')}</tbody></table></div>`:'<div class="card empty">لا توجد بيانات</div>';
-  if(r.classes.length){$('#aP').onclick=()=>printHtml('التقرير الشامل لإنجاز الطلاب',doc());$('#aS').onclick=e=>exportPdf(e.currentTarget,'تقرير','شامل',doc(),false,'المدرسة');}}
+   <div class="card tbl-wrap"><table class="tbl"><thead><tr><th>الصف</th><th>الطلاب</th><th>الملفات</th><th>المتحقق</th><th>المتبقي</th><th>المتوسط</th><th>علاجية</th><th>متابعة</th><th>إثرائية</th></tr></thead><tbody>${r.classes.map(c=>`<tr><td><b>${esc(c.cls)}</b></td><td>${c.students}</td><td>${c.files}</td><td>${c.avgPct}%</td><td>${c.remain}%</td><td>${avgTxt(c.avgScore)}</td><td>${c.rem}</td><td>${c.mid}</td><td>${c.enr}</td></tr>`).join('')}</tbody></table></div>
+   <div id="paperBox"></div>`:'<div class="card empty">لا توجد بيانات</div>';
+  if(r.classes.length){$('#paperBox').innerHTML=paperHtml('التقرير الشامل لإنجاز الطلاب',doc(),false);
+    $('#aP').onclick=()=>printHtml('التقرير الشامل لإنجاز الطلاب',doc());$('#aS').onclick=e=>exportPdf(e.currentTarget,'تقرير','شامل',doc(),false,'المدرسة');}}
 
 function tabPlans(){$('#tab').innerHTML=`<div class="card filters">${pickers(false)}</div><div id="rep"><div class="card empty">اختر الصف لعرض الطلاب مصنّفين</div></div>`;
   bindPickers(c=>{if(!c)return;const r=clsReport(c);
