@@ -72,12 +72,10 @@ const PDFJS_W='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker
 const $=(s,r=document)=>r.querySelector(s),$$=(s,r=document)=>Array.from(r.querySelectorAll(s));
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const app=$('#app');
-const spin=m=>`<div class="empty">⏳ ${esc(m||'جارِ التحميل…')}</div>`;
 const arSort=(a,b)=>String(a).localeCompare(String(b),'ar');
 function toast(m,t){const e=$('#toast');e.textContent=m;e.className='show '+(t||'');clearTimeout(e._t);e._t=setTimeout(()=>e.className='',3500);}
 const pad=n=>String(n).padStart(2,'0');
 const stamp=()=>{const d=new Date();return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}-${pad(d.getMinutes())}`;};
-const safe=s=>String(s).replace(/[\\\/:*?"<>|]/g,'-').trim();
 
 /* ===== نصوص ===== */
 const digits=s=>String(s||'').replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d));
@@ -128,8 +126,7 @@ const IDB={db:null,
  get(st,k){return this.tx(st,'readonly',t=>t.objectStore(st).get(k));},
  put(st,v,k){return this.tx(st,'readwrite',t=>k===undefined?t.objectStore(st).put(v):t.objectStore(st).put(v,k));},
  all(st){return this.tx(st,'readonly',t=>t.objectStore(st).getAll());},
- del(st,k){return this.tx(st,'readwrite',t=>t.objectStore(st).delete(k));},
- clear(st){return this.tx(st,'readwrite',t=>t.objectStore(st).clear());}};
+ del(st,k){return this.tx(st,'readwrite',t=>t.objectStore(st).delete(k));}};
 const DEF={school:'اكتب اسم المدرسة',lines:'المملكة العربية السعودية | وزارة التعليم',year:'1448هـ',term:'الفصل الدراسي الأول',curTerm:'الفصل الدراسي الأول',teacher:'اسم المعلم',principal:'اسم المدير',rem:60,enr:90,top:90,logo:''};
 const S={meta:[],set:{...DEF},grades:[],tasks:'',tab:'files',sel:{}};
 async function load(){S.meta=await IDB.all('meta');S.set={...DEF,...(await IDB.get('kv','settings')||{})};S.grades=await IDB.get('kv','grades')||[];S.tasks=await IDB.get('kv','tasks')||'';
@@ -236,6 +233,20 @@ function mountGrades(host,getName,title){
    <label>الفترة<select class="gp">${GR_PERIODS.map(p=>`<option>${p.n}</option>`).join('')}</select></label></div><div class="gb"></div></div>`;
   const sel=$('.gp',host),b=$('.gb',host),go=()=>{const n=getName();if(!S.grades.length){b.innerHTML='<div class="muted" style="text-align:center">لم تُستورد درجات الفترات بعد (تبويب «درجات الفترات»)</div>';return;}if(!n){b.innerHTML='<div class="muted" style="text-align:center">اختر الطالب</div>';return;}drawGrades(b,gradeData(n,sel.value));};
   sel.onchange=go;go();}
+/* جدول درجات الصف كاملاً */
+function mountClassGrades(host,cls){
+  host.innerHTML=`<div class="card pad" style="margin-bottom:12px"><div class="row" style="justify-content:space-between;margin-bottom:8px"><h2 style="margin:0">📊 درجات الفترات للصف</h2>
+   <label>الفترة<select class="gp">${GR_PERIODS.map(p=>`<option>${p.n}</option>`).join('')}</select></label></div><div class="gb"></div></div>`;
+  const sel=$('.gp',host),b=$('.gb',host);
+  const go=()=>{
+    if(!S.grades.length){b.innerHTML='<div class="muted" style="text-align:center">لم تُستورد درجات الفترات بعد (تبويب «درجات الفترات»)</div>';return;}
+    const rows=studentsOf(cls).map(n=>({n,d:gradeData(n,sel.value)})),ok=rows.filter(x=>!x.d.err);
+    if(!ok.length){b.innerHTML=`<div class="muted" style="text-align:center">لا توجد درجات مسجلة في: ${esc(sel.value)}</div>`;return;}
+    const labels=ok[0].d.fields.map(f=>f.label);
+    b.innerHTML=`<div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>الطالب</th>${labels.map(l=>`<th>${esc(l)}</th>`).join('')}<th>النسبة</th></tr></thead><tbody>
+     ${rows.map((x,i)=>x.d.err?`<tr><td>${i+1}</td><td>${esc(x.n)}</td><td colspan="${labels.length+1}" class="muted">لا توجد درجات</td></tr>`
+      :`<tr><td>${i+1}</td><td><b>${esc(x.n)}</b></td>${labels.map(l=>{const f=x.d.fields.find(z=>z.label===l);return `<td style="text-align:center">${esc(f?f.value:'')}</td>`;}).join('')}<td style="text-align:center"><b>${x.d.percent==null?'—':x.d.percent+'%'}</b> ${x.d.excellent?'🏆':''}</td></tr>`).join('')}</tbody></table></div>`;};
+  sel.onchange=go;go();}
 
 /* ===== المستندات والتصدير ===== */
 const avgTxt=a=>a==null?'—':a+'%';
@@ -253,7 +264,6 @@ const docInner=(title,body)=>`<style>${DOC_CSS}</style>${headerHtml()}<h2 class=
 function printHtml(title,body,landscape){const f=document.createElement('iframe');f.style.cssText='position:fixed;width:0;height:0;border:0;left:-9999px';document.body.appendChild(f);
   f.onload=()=>setTimeout(()=>{try{f.contentWindow.focus();f.contentWindow.print();}catch(e){toast('تعذّرت الطباعة','bad');}setTimeout(()=>f.remove(),60000);},400);
   f.srcdoc=`<!doctype html><html dir="rtl"><head><meta charset="utf-8"><style>@page{size:A4 ${landscape?'landscape':'portrait'};margin:11mm}body{margin:0}</style></head><body><div class="pdoc">${docInner(title,body)}</div></body></html>`;}
-/* الورقة كاملة على الصفحة (معاينة تلقائية بلا أزرار) */
 function paperHtml(title,body,landscape){
   return `<h3 style="margin-top:14px">📄 معاينة التقرير</h3><div class="paper" style="overflow-x:auto"><div class="pdoc" style="min-width:${landscape?900:640}px">${docInner(title,body)}</div></div>`;}
 async function htmlToPdf(inner,landscape){
@@ -335,8 +345,9 @@ const kpiHtml=(st,lv)=>`<div class="kpis"><div class="kpi"><small>نسبة ال�
 function tabStu(){$('#tab').innerHTML=`<div class="card filters">${pickers()}</div><div id="rep"><div class="card empty">اختر الصف ثم الطالب</div></div>`;
   bindPickers((c,s)=>{if(!s){$('#rep').innerHTML='<div class="card empty">اختر الطالب</div>';return;}renderStu(stuReport(c,s));});}
 function renderStu(r){const st=r.stats;
-  $('#rep').innerHTML=`<div class="row" style="margin-bottom:12px"><button class="btn" id="aP">🖨️ طباعة</button><button class="btn" id="aS">💾 حفظ PDF</button><button class="btn" id="aR">📑 سجل الإنجاز</button><button class="btn red" id="aRem">🩺 خطة علاجية</button><button class="btn blue" id="aEnr">🚀 خطة إثرائية</button></div>
-  ${kpiHtml(st,true)}<div id="sgr"></div>
+  $('#rep').innerHTML=`<div id="sgr"></div>
+  <div class="row" style="margin-bottom:12px"><button class="btn" id="aP">🖨️ طباعة</button><button class="btn" id="aS">💾 حفظ PDF</button><button class="btn" id="aR">📑 سجل الإنجاز</button><button class="btn red" id="aRem">🩺 خطة علاجية</button><button class="btn blue" id="aEnr">🚀 خطة إثرائية</button></div>
+  ${kpiHtml(st,true)}
   ${st.missing.length?`<div class="card pad" style="margin-bottom:12px"><h3>المهام المتبقية (${st.missing.length})</h3><div class="tags">${st.missing.map(x=>`<span class="tag red">${esc(x)}</span>`).join('')}</div></div>`:`<div class="card pad" style="margin-bottom:12px;color:var(--pri2);font-weight:700">✅ أنجز الطالب جميع المهام</div>`}
   <div class="card tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>عنوان التقرير</th><th>النوع</th><th>الدرجة %</th><th>ملاحظة</th><th></th></tr></thead><tbody>
   ${r.files.map((f,i)=>`<tr><td>${i+1}</td><td><b>${esc(f.title)}</b></td><td>${esc(f.type)}</td><td><input class="sc" type="number" min="0" max="100" data-i="${i}" value="${esc(f.score)}"></td><td><input class="nt" data-i="${i}" value="${esc(f.manual?f.sn:'')}" placeholder="${esc(f.manual?'':f.sn)}"></td><td><button class="btn sm" data-v="${i}">عرض</button></td></tr>`).join('')}</tbody></table></div>
@@ -359,13 +370,15 @@ function clsDoc(r){const s=r.summary;
   <h3>تفاصيل الطلاب</h3><table class="g"><tr><th>م</th><th>الطالب</th><th>الملفات</th><th>المنجز</th><th>المتحقق</th><th>المتبقي</th><th>المتوسط</th><th>التوصية</th></tr>${r.students.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.name)}</td><td>${x.files}</td><td>${x.done}/${x.total}</td><td>${x.pct}%</td><td>${x.remain}%</td><td>${avgTxt(x.avg)}</td><td>${x.level}</td></tr>`).join('')}</table>`;}
 function tabCls(){$('#tab').innerHTML=`<div class="card filters">${pickers(false)}</div><div id="rep"><div class="card empty">اختر الصف</div></div>`;
   bindPickers(c=>{if(!c)return;const r=clsReport(c),s=r.summary;
-   $('#rep').innerHTML=`<div class="row" style="margin-bottom:12px"><button class="btn" id="aP">🖨️ طباعة</button><button class="btn" id="aS">💾 حفظ PDF</button></div>
+   $('#rep').innerHTML=`<div id="cgr"></div>
+   <div class="row" style="margin-bottom:12px"><button class="btn" id="aP">🖨️ طباعة</button><button class="btn" id="aS">💾 حفظ PDF</button></div>
    <div class="kpis"><div class="kpi"><small>الطلاب</small><b>${s.students}</b></div><div class="kpi"><small>متوسط المتحقق</small><b>${s.avgPct}%</b>${pctBar(s.avgPct)}</div><div class="kpi"><small>المتبقي</small><b>${s.remain}%</b></div><div class="kpi"><small>متوسط الدرجات</small><b>${avgTxt(s.avgScore)}</b></div>
    <div class="kpi"><small>التوزيع</small><div class="row"><span class="badge b-rem">علاجية ${s.rem}</span><span class="badge b-mid">متابعة ${s.mid}</span><span class="badge b-enr">إثرائية ${s.enr}</span></div></div></div>
    <div class="card tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>الطالب</th><th>الملفات</th><th>المنجز</th><th style="min-width:120px">المتحقق</th><th>المتوسط</th><th>التوصية</th><th></th></tr></thead><tbody>
    ${r.students.map((x,i)=>`<tr><td>${i+1}</td><td><b>${esc(x.name)}</b></td><td>${x.files}</td><td>${x.done}/${x.total}</td><td><div class="row" style="flex-wrap:nowrap"><span>${x.pct}%</span>${pctBar(x.pct)}</div></td><td>${avgTxt(x.avg)}</td><td>${lvl(x.level)}</td><td><button class="btn sm" data-s="${esc(x.name)}">التقرير</button></td></tr>`).join('')}</tbody></table></div>
    <div id="paperBox"></div>`;
    $('#paperBox').innerHTML=paperHtml('تقرير إنجاز صف: '+r.cls,clsDoc(r),false);
+   mountClassGrades($('#cgr'),c);
    $('#aP').onclick=()=>printHtml('تقرير إنجاز صف: '+r.cls,clsDoc(r));$('#aS').onclick=e=>exportPdf(e.currentTarget,'تقرير','صف',clsDoc(r),false,r.cls);
    $$('[data-s]').forEach(b=>b.onclick=()=>{S.sel={c:c,s:b.dataset.s};S.tab='stu';shell();});},false);}
 
