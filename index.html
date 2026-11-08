@@ -210,14 +210,23 @@ const GR_ITEMS=[['المشاركة','المشاركة',20],['الواجبات','
 const grColor=p=>p>=90?'#16a34a':p>=75?'#2563eb':p>=50?'#f59e0b':'#dc2626';
 const gnum=v=>{const m=digits(v).replace(/[٫,]/g,'.').match(/-?\d+(?:\.\d+)?/);return m?parseFloat(m[0]):NaN;};
 async function importGrades(file){
-  const wb=XLSX.read(await file.arrayBuffer(),{type:'array'}),tables=[];
-  const fix=v=>typeof v==='number'?String(Math.round(v*100)/100):String(v==null?'':v);
+  const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:true}),tables=[];
+  const num=v=>typeof v==='number'?String(Math.round(v*100)/100):String(v==null?'':v);
+  const fromDate=v=>String(parseFloat(v.getDate()+'.'+(v.getMonth()+1)));
   wb.SheetNames.forEach(n=>{
     const raw=XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,raw:true,defval:''});
     if(raw.length<2)return;
-    const rows=raw.map(r=>r.map(fix));
-    const h=rows[0].map(x=>String(x).replace(/\s+/g,' ').trim());
-    tables.push({sheet:n,headers:h,rows:rows.slice(1),
+    const h=raw[0].map(x=>String(x).replace(/\s+/g,' ').trim());
+    const hw=h.findIndex(x=>x.indexOf('الواجبات')>-1);
+    const rows=raw.slice(1).map(r=>r.map((v,c)=>{
+      if(v instanceof Date) return c===hw?fromDate(v):String(v.getDate());
+      if(c===hw&&typeof v==='number'&&v>1000){ // رقم تسلسلي لتاريخ
+        const d=new Date(Math.round((v-25569)*86400000));
+        return String(parseFloat(d.getUTCDate()+'.'+(d.getUTCMonth()+1)));
+      }
+      return num(v);
+    }));
+    tables.push({sheet:n,headers:h,rows,
       nameCol:h.findIndex(x=>x==='الطالب'||x.indexOf('الطالب')===0),
       classCol:h.findIndex(x=>x==='الصف'),
       periodCol:h.findIndex(x=>x==='الفترة'),
