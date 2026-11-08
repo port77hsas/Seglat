@@ -1,4 +1,4 @@
-const V = 'rp-teacher-v2';
+const V = 'rp-teacher-v3';
 const CORE = ['./', './index.html', './manifest.json'];
 const LIBS = [
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
